@@ -25,6 +25,10 @@ func NewWebsocketPeer(serialization Serialization, url string, tlscfg *tls.Confi
 		return newWebsocketPeer(url, jsonWebsocketProtocol,
 			new(JSONSerializer), websocket.TextMessage, tlscfg, dial,
 		)
+	case JSONNUMBER:
+		return newWebsocketPeer(url, jsonWebsocketProtocol,
+			&JSONSerializer{useNumber: true}, websocket.TextMessage, tlscfg, dial,
+		)
 	case MSGPACK:
 		return newWebsocketPeer(url, msgpackWebsocketProtocol,
 			new(MessagePackSerializer), websocket.BinaryMessage, tlscfg, dial,

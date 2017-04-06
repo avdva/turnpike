@@ -1,6 +1,7 @@
 package turnpike
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,7 +19,24 @@ const (
 	JSON Serialization = iota
 	// Use msgpack-encoded strings as a payload.
 	MSGPACK
+	// Use JSON-encoded strings as a payload. json.Number will be used instead of numeric types.
+	JSONNUMBER
 )
+
+func assignOrConvert(src, dst reflect.Value) bool {
+	if src.Type().AssignableTo(dst.Type()) {
+		dst.Set(src)
+		return true
+	} else if src.Type().ConvertibleTo(dst.Type()) {
+		dst.Set(src.Convert(dst.Type()))
+		return true
+	}
+	return false
+}
+
+type i64 interface {
+	Int64() (int64, error)
+}
 
 // applies a list of values from a WAMP message to a message type
 func apply(msgType MessageType, arr []interface{}) (Message, error) {
@@ -39,11 +57,18 @@ func apply(msgType MessageType, arr []interface{}) (Message, error) {
 		if arg.Kind() == reflect.Ptr {
 			arg = arg.Elem()
 		}
-		if arg.Type().AssignableTo(f.Type()) {
-			f.Set(arg)
-		} else if arg.Type().ConvertibleTo(f.Type()) {
-			f.Set(arg.Convert(f.Type()))
-		} else if f.Type().Kind() != arg.Type().Kind() {
+		if assignOrConvert(arg, f) {
+			continue
+		}
+		if f.Type().Kind() != arg.Type().Kind() {
+			if str, ok := arr[i+1].(fmt.Stringer); ok && assignOrConvert(reflect.ValueOf(str), f) {
+				continue
+			}
+			if intVal, ok := arr[i+1].(i64); ok {
+				if i, err := intVal.Int64(); err == nil && assignOrConvert(reflect.ValueOf(i), f) {
+					continue
+				}
+			}
 			return nil, fmt.Errorf("Message format error: %dth field not recognizable, got %s, expected %s", i+1, arg.Type(), f.Type())
 		} else if f.Type().Kind() == reflect.Map {
 			if err := applyMap(f, arg); err != nil {
@@ -174,6 +199,7 @@ func (s *MessagePackSerializer) Deserialize(data []byte) (Message, error) {
 // JSONSerializer is an implementation of Serializer that handles serializing
 // and deserializing JSON encoded payloads.
 type JSONSerializer struct {
+	useNumber bool
 }
 
 // Serialize marshals the payload into a message.
@@ -192,16 +218,25 @@ func (s *JSONSerializer) Serialize(msg Message) ([]byte, error) {
 // Use the BinaryData type in your structures if using binary data.
 func (s *JSONSerializer) Deserialize(data []byte) (Message, error) {
 	var arr []interface{}
-	if err := json.Unmarshal(data, &arr); err != nil {
+	d := json.NewDecoder(bytes.NewReader(data))
+	if s.useNumber {
+		d.UseNumber()
+	}
+	if err := d.Decode(&arr); err != nil {
 		return nil, err
 	} else if len(arr) == 0 {
 		return nil, fmt.Errorf("Invalid message")
 	}
 
 	var msgType MessageType
-	if typ, ok := arr[0].(float64); ok {
-		msgType = MessageType(typ)
-	} else {
+	typ, ok := arr[0].(json.Number)
+	if ok {
+		f, err := typ.Float64()
+		if ok = (err == nil); ok {
+			msgType = MessageType(f)
+		}
+	}
+	if !ok {
 		return nil, fmt.Errorf("Unsupported message format")
 	}
 	return apply(msgType, arr)
