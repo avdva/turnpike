@@ -107,16 +107,16 @@ func (br *defaultBroker) Unsubscribe(sub *Session, msg *Unsubscribe) {
 			Error:   ErrNoSuchSubscription,
 		}
 		sub.Send(err)
-		log.Printf("Error unsubscribing: no such subscription %v", msg.Subscription)
+		logger.Printf("Error unsubscribing: no such subscription %v", msg.Subscription)
 		return
 	}
 	delete(br.subscriptions, msg.Subscription)
 
 	// clean up routes
 	if r, ok := br.routes[topic]; !ok {
-		log.Printf("Error unsubscribing: unable to find routes for %s topic", topic)
+		logger.Printf("Error unsubscribing: unable to find routes for %s topic", topic)
 	} else if _, ok := r[msg.Subscription]; !ok {
-		log.Printf("Error unsubscribing: %s route does not exist for %v subscription", topic, msg.Subscription)
+		logger.Printf("Error unsubscribing: %s route does not exist for %v subscription", topic, msg.Subscription)
 	} else {
 		delete(r, msg.Subscription)
 		if len(r) == 0 {
@@ -126,9 +126,9 @@ func (br *defaultBroker) Unsubscribe(sub *Session, msg *Unsubscribe) {
 
 	// clean up sender's subscription
 	if s, ok := br.sessions[sub]; !ok {
-		log.Println("Error unsubscribing: unable to find sender's subscriptions")
+		logger.Println("Error unsubscribing: unable to find sender's subscriptions")
 	} else if _, ok := s[msg.Subscription]; !ok {
-		log.Printf("Error unsubscribing: sender does not contain %v subscription", msg.Subscription)
+		logger.Printf("Error unsubscribing: sender does not contain %v subscription", msg.Subscription)
 	} else {
 		delete(s, msg.Subscription)
 		if len(s) == 0 {
