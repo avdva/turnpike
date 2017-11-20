@@ -227,14 +227,16 @@ func (s *JSONSerializer) Deserialize(data []byte) (Message, error) {
 	} else if len(arr) == 0 {
 		return nil, fmt.Errorf("Invalid message")
 	}
-
 	var msgType MessageType
-	typ, ok := arr[0].(json.Number)
-	if ok {
-		f, err := typ.Float64()
+	var ok bool
+	switch typed := arr[0].(type) {
+	case json.Number:
+		f, err := typed.Float64()
 		if ok = (err == nil); ok {
 			msgType = MessageType(f)
 		}
+	case float64:
+		msgType, ok = MessageType(typed), true
 	}
 	if !ok {
 		return nil, fmt.Errorf("Unsupported message format")
